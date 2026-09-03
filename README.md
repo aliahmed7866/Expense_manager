@@ -7,6 +7,9 @@ A private, mobile-first expense manager for the local Termux app suite. It track
 - Expense and income transaction tracking
 - Separate lender debt cards with live outstanding balances
 - Income-funded debt repayments with payment history and undo support
+- Priority-debt safeguards, monthly minimums and due-date status
+- Highest-APR and smallest-balance payoff strategies
+- Editable APR, debt type, lender and repayment details
 - Monthly totals, balance and daily spending chart
 - Category breakdown and monthly category budgets
 - Search and filtering

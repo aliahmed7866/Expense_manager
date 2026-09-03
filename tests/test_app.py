@@ -1,6 +1,8 @@
 import csv
 import io
 import re
+import sqlite3
+from datetime import date
 
 import pytest
 
@@ -112,3 +114,70 @@ def test_debt_payment_cannot_exceed_available_income(client):
         follow_redirects=True,
     )
     assert "Not enough available income" in response.get_data(as_text=True)
+
+
+def add_debt(client, lender, balance, apr, minimum="0", priority=False):
+    client.post(
+        "/debts",
+        data={"csrf_token": token(client), "lender": lender, "balance": balance,
+              "debt_type": "credit_card", "apr": apr, "minimum_payment": minimum,
+              "due_day": "20", "priority": "1" if priority else "0"},
+    )
+
+
+def test_payoff_strategy_reorders_focus_without_overriding_priority(client):
+    client.get("/debts")
+    add_debt(client, "High APR Card", "1000", "29.9", "50")
+    add_debt(client, "Small Card", "100", "5", "10")
+    page = client.get("/debts").get_data(as_text=True)
+    assert page.index("High APR Card") < page.index("Small Card")
+
+    page = client.post(
+        "/debts/strategy",
+        data={"csrf_token": token(client), "strategy": "snowball"},
+        follow_redirects=True,
+    ).get_data(as_text=True)
+    assert page.index("Small Card") < page.index("High APR Card")
+
+    client.post(
+        "/debts/1/edit",
+        data={"csrf_token": token(client), "lender": "High APR Card", "balance": "1000",
+              "debt_type": "credit_card", "apr": "29.9", "minimum_payment": "50",
+              "due_day": "20", "priority": "1"},
+    )
+    page = client.get("/debts").get_data(as_text=True)
+    assert page.index("High APR Card") < page.index("Small Card")
+    assert "Priority" in page
+
+
+def test_editing_current_debt_balance_preserves_payment_history(client):
+    client.get("/debts")
+    add_debt(client, "Flexible Card", "1000", "19.9")
+    add_income(client)
+    client.post(
+        "/debts/1/pay",
+        data={"csrf_token": token(client), "amount": "100", "paid_on": date.today().isoformat()},
+    )
+    page = client.post(
+        "/debts/1/edit",
+        data={"csrf_token": token(client), "lender": "Flexible Card", "balance": "800",
+              "debt_type": "credit_card", "apr": "18.9", "minimum_payment": "40", "due_day": "25"},
+        follow_redirects=True,
+    ).get_data(as_text=True)
+    assert "Debt details updated." in page
+    assert "£800.00" in page
+    assert "£100.00 paid" in page
+
+
+def test_existing_debt_database_is_migrated(tmp_path):
+    database = tmp_path / "legacy.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """CREATE TABLE debts (id INTEGER PRIMARY KEY, lender TEXT NOT NULL,
+               starting_balance_pence INTEGER NOT NULL, notes TEXT NOT NULL DEFAULT '',
+               created_on TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0)"""
+        )
+    create_app({"TESTING": True, "DATABASE": str(database), "SECRET_KEY": "test"})
+    with sqlite3.connect(database) as connection:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(debts)")}
+    assert {"debt_type", "apr_basis_points", "minimum_payment_pence", "due_day", "priority"} <= columns

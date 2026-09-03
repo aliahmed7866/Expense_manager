@@ -6,6 +6,7 @@ import os
 import re
 import secrets
 import sqlite3
+from calendar import monthrange
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
@@ -37,6 +38,52 @@ def money_to_pence(value: str) -> int:
     if amount <= 0 or amount > Decimal("99999999.99"):
         raise ValueError("Amount must be greater than zero.")
     return int(amount * 100)
+
+
+def optional_money_to_pence(value: str | None) -> int:
+    if not value or not value.strip():
+        return 0
+    try:
+        amount = Decimal(value.strip()).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        raise ValueError("Enter a valid minimum payment.") from None
+    if amount < 0 or amount > Decimal("99999999.99"):
+        raise ValueError("Minimum payment cannot be negative.")
+    return int(amount * 100)
+
+
+def apr_to_basis_points(value: str | None) -> int:
+    if not value or not value.strip():
+        return 0
+    try:
+        apr = Decimal(value.strip()).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        raise ValueError("Enter a valid APR.") from None
+    if apr < 0 or apr > 999:
+        raise ValueError("APR must be between 0% and 999%.")
+    return int(apr * 100)
+
+
+def debt_form_values(form) -> dict:
+    lender = form.get("lender", "").strip()
+    if not lender or len(lender) > 100:
+        raise ValueError("Add a lender name (maximum 100 characters).")
+    debt_type = form.get("debt_type", "other")
+    if debt_type not in {"credit_card", "loan", "overdraft", "bnpl", "priority", "personal", "other"}:
+        raise ValueError("Choose a valid debt type.")
+    due_raw = form.get("due_day", "").strip()
+    due_day = int(due_raw) if due_raw else None
+    if due_day is not None and not 1 <= due_day <= 31:
+        raise ValueError("Due day must be from 1 to 31.")
+    return {
+        "lender": lender,
+        "debt_type": debt_type,
+        "apr_basis_points": apr_to_basis_points(form.get("apr")),
+        "minimum_payment_pence": optional_money_to_pence(form.get("minimum_payment")),
+        "due_day": due_day,
+        "priority": 1 if form.get("priority") == "1" or debt_type == "priority" else 0,
+        "notes": form.get("notes", "").strip()[:500],
+    }
 
 
 def valid_month(value: str | None) -> str:
@@ -107,7 +154,25 @@ def create_app(test_config: dict | None = None) -> Flask:
                     transaction_id INTEGER NOT NULL UNIQUE REFERENCES transactions(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS idx_debt_payments_debt ON debt_payments(debt_id);
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
                 """
+            )
+            debt_columns = {row["name"] for row in connection.execute("PRAGMA table_info(debts)")}
+            migrations = {
+                "debt_type": "TEXT NOT NULL DEFAULT 'other'",
+                "apr_basis_points": "INTEGER NOT NULL DEFAULT 0",
+                "minimum_payment_pence": "INTEGER NOT NULL DEFAULT 0",
+                "due_day": "INTEGER",
+                "priority": "INTEGER NOT NULL DEFAULT 0",
+            }
+            for column, definition in migrations.items():
+                if column not in debt_columns:
+                    connection.execute(f"ALTER TABLE debts ADD COLUMN {column} {definition}")
+            connection.execute(
+                "INSERT OR IGNORE INTO app_settings(key, value) VALUES ('debt_strategy', 'avalanche')"
             )
             for name, colour in CATEGORY_COLOURS.items():
                 kind = "income" if name == "Salary" else "expense"
@@ -293,29 +358,35 @@ def create_app(test_config: dict | None = None) -> Flask:
     def debts():
         if request.method == "POST":
             try:
-                lender = request.form.get("lender", "").strip()
+                values = debt_form_values(request.form)
                 balance = money_to_pence(request.form.get("balance", ""))
-                if not lender or len(lender) > 100:
-                    raise ValueError("Add a lender name (maximum 100 characters).")
                 with db() as connection:
                     connection.execute(
-                        "INSERT INTO debts(lender, starting_balance_pence, notes, created_on) VALUES (?, ?, ?, ?)",
-                        (lender, balance, request.form.get("notes", "").strip()[:500], date.today().isoformat()),
+                        """INSERT INTO debts
+                           (lender, starting_balance_pence, notes, created_on, debt_type,
+                            apr_basis_points, minimum_payment_pence, due_day, priority)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (values["lender"], balance, values["notes"], date.today().isoformat(),
+                         values["debt_type"], values["apr_basis_points"], values["minimum_payment_pence"],
+                         values["due_day"], values["priority"]),
                     )
                 flash("Debt added.", "success")
                 return redirect(url_for("debts"))
             except ValueError as exc:
                 flash(str(exc), "error")
 
+        current_month = date.today().strftime("%Y-%m")
         with db() as connection:
-            rows = connection.execute(
+            raw_rows = connection.execute(
                 """SELECT d.*, COALESCE(SUM(t.amount_pence), 0) paid_pence,
                     d.starting_balance_pence - COALESCE(SUM(t.amount_pence), 0) outstanding_pence,
+                    COALESCE(SUM(CASE WHEN substr(t.occurred_on, 1, 7)=? THEN t.amount_pence ELSE 0 END), 0) monthly_paid_pence,
                     COUNT(dp.id) payment_count
                    FROM debts d
                    LEFT JOIN debt_payments dp ON dp.debt_id=d.id
                    LEFT JOIN transactions t ON t.id=dp.transaction_id
-                   WHERE d.archived=0 GROUP BY d.id ORDER BY outstanding_pence DESC, d.id"""
+                   WHERE d.archived=0 GROUP BY d.id""",
+                (current_month,),
             ).fetchall()
             cash = connection.execute(
                 """SELECT COALESCE(SUM(CASE WHEN kind='income' THEN amount_pence ELSE -amount_pence END), 0)
@@ -327,19 +398,96 @@ def create_app(test_config: dict | None = None) -> Flask:
                    JOIN transactions t ON t.id=dp.transaction_id
                    ORDER BY t.occurred_on DESC, dp.id DESC LIMIT 12"""
             ).fetchall()
+            strategy = connection.execute(
+                "SELECT value FROM app_settings WHERE key='debt_strategy'"
+            ).fetchone()["value"]
+        rows = [dict(row) for row in raw_rows]
+        if strategy not in {"avalanche", "snowball"}:
+            strategy = "avalanche"
+        def strategy_key(row):
+            strategy_value = -row["apr_basis_points"] if strategy == "avalanche" else row["outstanding_pence"]
+            return (0 if row["priority"] else 1, strategy_value, row["outstanding_pence"], row["id"])
+        rows.sort(key=strategy_key)
+        today_date = date.today()
+        minimum_required = 0
+        for row in rows:
+            row["minimum_remaining_pence"] = max(
+                min(row["minimum_payment_pence"], row["outstanding_pence"]) - row["monthly_paid_pence"], 0
+            )
+            minimum_required += row["minimum_remaining_pence"]
+            row["due_status"] = ""
+            row["due_tone"] = ""
+            if row["due_day"] and row["minimum_remaining_pence"]:
+                last_day = monthrange(today_date.year, today_date.month)[1]
+                due_date = date(today_date.year, today_date.month, min(row["due_day"], last_day))
+                days_until = (due_date - today_date).days
+                if days_until < 0:
+                    row["due_status"], row["due_tone"] = "Minimum overdue", "danger"
+                elif days_until == 0:
+                    row["due_status"], row["due_tone"] = "Minimum due today", "warning"
+                elif days_until <= 7:
+                    row["due_status"], row["due_tone"] = f"Minimum due in {days_until} days", "warning"
+            elif row["minimum_payment_pence"] and not row["minimum_remaining_pence"]:
+                row["due_status"], row["due_tone"] = "This month’s minimum covered", "success"
         total_starting = sum(row["starting_balance_pence"] for row in rows)
         total_paid = sum(row["paid_pence"] for row in rows)
+        available_income = max(cash, 0)
+        target = next((row for row in rows if row["outstanding_pence"] > 0), None)
         return render_template(
-            "debts.html", rows=rows, history=history, available_income=max(cash, 0),
+            "debts.html", rows=rows, history=history, available_income=available_income,
             total_starting=total_starting, total_paid=total_paid,
             total_outstanding=max(total_starting - total_paid, 0),
+            minimum_required=minimum_required, minimum_shortfall=max(minimum_required - available_income, 0),
+            strategy=strategy, target=target,
         )
+
+    @app.post("/debts/strategy")
+    def set_debt_strategy():
+        strategy = request.form.get("strategy", "")
+        if strategy not in {"avalanche", "snowball"}:
+            abort(400, "Unsupported debt strategy.")
+        with db() as connection:
+            connection.execute(
+                """INSERT INTO app_settings(key, value) VALUES ('debt_strategy', ?)
+                   ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
+                (strategy,),
+            )
+        flash("Payoff strategy updated.", "success")
+        return redirect(url_for("debts"))
+
+    @app.post("/debts/<int:debt_id>/edit")
+    def edit_debt(debt_id: int):
+        try:
+            values = debt_form_values(request.form)
+            current_balance = money_to_pence(request.form.get("balance", ""))
+            with db() as connection:
+                paid = connection.execute(
+                    """SELECT COALESCE(SUM(t.amount_pence), 0) paid FROM debt_payments dp
+                       JOIN transactions t ON t.id=dp.transaction_id WHERE dp.debt_id=?""",
+                    (debt_id,),
+                ).fetchone()["paid"]
+                updated = connection.execute(
+                    """UPDATE debts SET lender=?, starting_balance_pence=?, notes=?, debt_type=?,
+                       apr_basis_points=?, minimum_payment_pence=?, due_day=?, priority=?
+                       WHERE id=? AND archived=0""",
+                    (values["lender"], current_balance + paid, values["notes"], values["debt_type"],
+                     values["apr_basis_points"], values["minimum_payment_pence"], values["due_day"],
+                     values["priority"], debt_id),
+                )
+                if not updated.rowcount:
+                    raise ValueError("Debt not found.")
+            flash("Debt details updated.", "success")
+        except (ValueError, TypeError) as exc:
+            flash(str(exc), "error")
+        return redirect(url_for("debts"))
 
     @app.post("/debts/<int:debt_id>/pay")
     def pay_debt(debt_id: int):
         try:
             amount = money_to_pence(request.form.get("amount", ""))
             paid_on = date.fromisoformat(request.form.get("paid_on", ""))
+            if paid_on > date.today():
+                raise ValueError("Debt payments cannot be dated in the future.")
             with db() as connection:
                 connection.execute("BEGIN IMMEDIATE")
                 debt = connection.execute(
