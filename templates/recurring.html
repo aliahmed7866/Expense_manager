@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block title %}Recurring · Pocketwise{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Know what is coming</p>
+    <h1>Recurring money</h1>
+    <p class="page-copy">Keep bills and regular income visible, then record or skip each occurrence with one tap.</p>
+  </div>
+  <a class="button primary" href="#add-recurring">+ Add recurring</a>
+</div>
+
+<div class="two-col recurring-layout">
+  <section class="card">
+    <div class="section-head">
+      <h2>Upcoming schedule</h2>
+      <span class="pill">{{ rows|length }} active</span>
+    </div>
+    {% if rows %}
+    <div class="recurring-list">
+      {% for row in rows %}
+      <article class="recurring-row {{ 'income-entry' if row.kind == 'income' }}">
+        <span class="category-icon" style="--icon:{{ row.colour }}">{{ row.category[0] }}</span>
+        <div class="recurring-copy">
+          <strong>{{ row.merchant }}</strong>
+          <small>{{ row.next_due }} · {{ row.cadence }} · {{ row.category }}</small>
+          {% if row.notes %}<small>{{ row.notes }}</small>{% endif %}
+        </div>
+        <strong class="amount {{ 'positive' if row.kind == 'income' }}">{{ '+' if row.kind == 'income' else '−' }}{{ row.amount_pence|money }}</strong>
+        <div class="recurring-actions">
+          <form method="post" action="{{ url_for('post_recurring', entry_id=row.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="primary">Record</button>
+          </form>
+          <form method="post" action="{{ url_for('skip_recurring', entry_id=row.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button>Skip once</button>
+          </form>
+          <form method="post" action="{{ url_for('delete_recurring', entry_id=row.id) }}" data-confirm="Remove this recurring entry? Existing transactions remain.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="link-button">Remove</button>
+          </form>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">Add regular bills or income to see what is coming next.</div>
+    {% endif %}
+  </section>
+
+  <section class="card add-card" id="add-recurring">
+    <p class="eyebrow">Plan once</p>
+    <h2>Add recurring money</h2>
+    <form method="post" class="stack-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="segmented">
+        <label><input type="radio" name="kind" value="expense" checked><span>Bill / expense</span></label>
+        <label><input type="radio" name="kind" value="income"><span>Income</span></label>
+      </div>
+      <label>Amount (£)<input name="amount" inputmode="decimal" placeholder="0.00" required></label>
+      <label>Name<input name="merchant" maxlength="100" placeholder="Rent, phone bill, salary…" required></label>
+      <div class="form-grid">
+        <label>Next date<input type="date" name="next_due" value="{{ today }}" required></label>
+        <label>Repeats<select name="cadence"><option value="monthly">Monthly</option><option value="weekly">Weekly</option></select></label>
+      </div>
+      <label>Category<select name="category_id" required>{% for category in categories %}<option value="{{ category.id }}" data-kind="{{ category.kind }}" {{ 'hidden' if category.kind == 'income' }}>{{ category.name }}</option>{% endfor %}</select></label>
+      <details class="optional-fields">
+        <summary>Payment method and note <span>optional</span></summary>
+        <div class="optional-fields-body">
+          <label>Payment method<input name="payment_method" maxlength="40" placeholder="Direct debit, card…"></label>
+          <label>Note<textarea name="notes" maxlength="500" rows="3"></textarea></label>
+        </div>
+      </details>
+      <button class="primary wide">Save recurring entry</button>
+    </form>
+  </section>
+</div>
+{% endblock %}
