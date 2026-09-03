@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Budgets · Pocketwise{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Set useful guardrails</p><h1>Monthly budgets</h1></div><form class="month-picker"><input type="month" name="month" value="{{ month }}"><button>View</button></form></div>
+<div class="two-col budget-layout">
+  <section class="card">
+    <div class="section-head"><h2>Category progress</h2></div>
+    <div class="budget-list">{% for row in rows %}<div class="budget-row"><div class="budget-title"><span class="dot" style="--dot:{{ row.colour }}"></span><strong>{{ row.name }}</strong><span>{{ row.spent|money }}{% if row.budget %} of {{ row.budget|money }}{% endif %}</span></div>{% if row.budget %}<div class="budget-track"><i class="{{ 'over' if row.spent > row.budget }}" style="width:{{ [row.spent / row.budget * 100, 100]|min }}%;background:{{ row.colour }}"></i></div><div class="budget-actions"><small class="{{ 'negative' if row.spent > row.budget }}">{{ (row.budget - row.spent)|money }} remaining</small><form method="post" action="{{ url_for('delete_budget', category_id=row.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="month" value="{{ month }}"><button class="link-button">Remove</button></form></div>{% else %}<div class="no-budget">No budget set</div>{% endif %}</div>{% endfor %}</div>
+  </section>
+  <section class="card add-card">
+    <p class="eyebrow">Plan ahead</p><h2>Set a category budget</h2>
+    <form method="post" class="stack-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="month" value="{{ month }}"><label>Category<select name="category_id">{% for row in rows %}<option value="{{ row.id }}">{{ row.name }}</option>{% endfor %}</select></label><label>Monthly limit (£)<input name="amount" inputmode="decimal" placeholder="0.00" required></label><button class="primary wide">Save budget</button></form>
+  </section>
+</div>
+{% endblock %}

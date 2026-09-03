@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-head">
+  <div><p class="eyebrow">Monthly overview</p><h1>See where your money goes.</h1></div>
+  <form class="month-picker"><input type="month" name="month" value="{{ month }}" aria-label="Month"><button>View</button></form>
+</div>
+<section class="stats">
+  <article class="stat"><span>Income</span><strong class="positive">{{ totals.income|money }}</strong><small>This month</small></article>
+  <article class="stat"><span>Spent</span><strong>{{ totals.expense|money }}</strong><small>This month</small></article>
+  <article class="stat"><span>Balance</span><strong class="{{ 'positive' if totals.income - totals.expense >= 0 else 'negative' }}">{{ (totals.income - totals.expense)|money }}</strong><small>Income minus spending</small></article>
+  <article class="stat"><span>Budget left</span><strong class="{{ 'negative' if budget and budget - totals.expense < 0 }}">{{ (budget - totals.expense)|money if budget else 'Not set' }}</strong><small>{{ budget|money if budget else 'Add category budgets' }}</small></article>
+</section>
+<div class="dashboard-grid">
+  <section class="card spending-card">
+    <div class="section-head"><div><p class="eyebrow">Spending rhythm</p><h2>Daily outgoings</h2></div><a href="{{ url_for('transactions', month=month) }}">View all</a></div>
+    {% if days %}<div class="bars" aria-label="Daily spending chart">
+      {% for row in days %}<div class="bar-wrap" title="{{ row.day }} · {{ row.amount_pence|money }}"><div class="bar" style="height:{{ 10 + (row.amount_pence / highest * 90)|round }}%"></div><small>{{ row.day[-2:] }}</small></div>{% endfor %}
+    </div>{% else %}<div class="empty">No spending recorded for this month yet.</div>{% endif %}
+  </section>
+  <section class="card">
+    <div class="section-head"><div><p class="eyebrow">Breakdown</p><h2>By category</h2></div></div>
+    {% if categories %}<div class="category-list">{% for row in categories %}<div class="category-row"><span class="dot" style="--dot:{{ row.colour }}"></span><span>{{ row.name }}</span><div class="track"><i style="width:{{ row.amount_pence / category_total * 100 }}%;background:{{ row.colour }}"></i></div><strong>{{ row.amount_pence|money }}</strong></div>{% endfor %}</div>{% else %}<div class="empty">Your category breakdown will appear here.</div>{% endif %}
+  </section>
+</div>
+<section class="card recent">
+  <div class="section-head"><div><p class="eyebrow">Latest activity</p><h2>Recent transactions</h2></div><a class="button primary" href="{{ url_for('transactions') }}#add">+ Add transaction</a></div>
+  {% if recent %}<div class="transaction-list">{% for row in recent %}<div class="transaction-row"><span class="category-icon" style="--icon:{{ row.colour }}">{{ row.category[0] }}</span><div><strong>{{ row.merchant }}</strong><small>{{ row.occurred_on }} · {{ row.category }}</small></div><strong class="amount {{ 'positive' if row.kind == 'income' }}">{{ '+' if row.kind == 'income' else '−' }}{{ row.amount_pence|money }}</strong></div>{% endfor %}</div>{% else %}<div class="empty">Add your first expense or income to get started.</div>{% endif %}
+</section>
+{% endblock %}
