@@ -21,3 +21,7 @@ function syncCategories() {
 }
 kindInputs.forEach((input) => input.addEventListener("change", syncCategories));
 syncCategories();
+
+if (window.location.hash === "#add") {
+  window.setTimeout(() => document.querySelector('#add input[name="amount"]')?.focus(), 250);
+}

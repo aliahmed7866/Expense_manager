@@ -34,6 +34,14 @@ def test_health(client):
     assert response.json["ok"] is True
 
 
+def test_quick_actions_prefill_the_right_transaction_type(client):
+    dashboard = client.get("/").get_data(as_text=True)
+    assert "Add first income" in dashboard
+    assert "Add expense" in dashboard
+    income_page = client.get("/transactions?add_kind=income#add").get_data(as_text=True)
+    assert 'name="kind" value="income" checked' in income_page
+
+
 def test_add_transaction_and_dashboard(client):
     page = client.get("/transactions")
     assert page.status_code == 200

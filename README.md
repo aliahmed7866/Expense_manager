@@ -17,6 +17,7 @@ A private, mobile-first expense manager for the local Termux app suite. It track
 - CSRF-protected forms and safe integer money storage
 - Health endpoint and runit/Termux service scripts
 - Automatic registration in the AYCF admin hub
+- One-tap expense, income and debt actions with a guided first-run state
 
 ## Run locally
 
@@ -39,7 +40,9 @@ bash termux/install-service.sh
 bash termux/install-auto-deploy.sh
 ```
 
-The installer creates the `expense-manager` runit service, registers it in `~/.config/aycf/apps.json`, and restarts the admin hub when available. The default database is `~/.local/share/expense-manager/expenses.sqlite3`.
+The installer creates the `expense-manager` runit service and registers it in `~/.config/aycf/apps.json`. The admin hub reads that registry dynamically, so it does not need to be restarted. The default database is `~/.local/share/expense-manager/expenses.sqlite3`.
+
+If the service is not installed yet, the admin hub can run its configured setup command from the Pocketwise **Start** button. After setup, Start, Stop and Restart use the `expense-manager` runit service directly.
 
 ## Tests
 
