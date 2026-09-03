@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Transactions · Pocketwise{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Money in and out</p><h1>Transactions</h1></div><a class="button primary" href="#add">+ Add transaction</a></div>
+<section class="card filters"><form method="get"><input type="month" name="month" value="{{ month }}"><input type="search" name="q" value="{{ query }}" placeholder="Search merchant, note or category"><select name="kind"><option value="">All types</option><option value="expense" {{ 'selected' if kind_filter == 'expense' }}>Expenses</option><option value="income" {{ 'selected' if kind_filter == 'income' }}>Income</option></select><button>Filter</button></form></section>
+<div class="two-col">
+  <section class="card">
+    <div class="section-head"><h2>{{ month }}</h2><span class="pill">{{ rows|length }} records</span></div>
+    {% if rows %}<div class="transaction-list">{% for row in rows %}<div class="transaction-row"><span class="category-icon" style="--icon:{{ row.colour }}">{{ row.category[0] }}</span><div><strong>{{ row.merchant }}</strong><small>{{ row.occurred_on }} · {{ row.category }}{% if row.payment_method %} · {{ row.payment_method }}{% endif %}</small>{% if row.notes %}<small class="notes">{{ row.notes }}</small>{% endif %}</div><strong class="amount {{ 'positive' if row.kind == 'income' }}">{{ '+' if row.kind == 'income' else '−' }}{{ row.amount_pence|money }}</strong><form method="post" action="{{ url_for('delete_transaction', transaction_id=row.id) }}" data-confirm="Delete this transaction?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="next" value="{{ request.full_path }}"><button class="icon-button" aria-label="Delete">×</button></form></div>{% endfor %}</div>
+    {% else %}<div class="empty">No matching transactions.</div>{% endif %}
+  </section>
+  <section class="card add-card" id="add">
+    <p class="eyebrow">Quick entry</p><h2>Add transaction</h2>
+    <form method="post" class="stack-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="segmented"><label><input type="radio" name="kind" value="expense" checked><span>Expense</span></label><label><input type="radio" name="kind" value="income"><span>Income</span></label></div>
+      <label>Amount (£)<input name="amount" inputmode="decimal" placeholder="0.00" required></label>
+      <label>Merchant or description<input name="merchant" maxlength="100" placeholder="e.g. Tesco" required></label>
+      <div class="form-grid"><label>Date<input type="date" name="occurred_on" value="{{ today }}" required></label><label>Category<select name="category_id" required>{% for category in categories %}<option value="{{ category.id }}" data-kind="{{ category.kind }}" {{ 'hidden' if category.kind == 'income' }}>{{ category.name }}</option>{% endfor %}</select></label></div>
+      <label>Payment method <span class="optional">optional</span><input name="payment_method" maxlength="40" placeholder="Card, cash, bank…"></label>
+      <label>Note <span class="optional">optional</span><textarea name="notes" maxlength="500" rows="3" placeholder="Anything useful to remember"></textarea></label>
+      <button class="primary wide">Save transaction</button>
+    </form>
+  </section>
+</div>
+{% endblock %}
