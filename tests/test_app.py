@@ -6,7 +6,7 @@ from datetime import date
 
 import pytest
 
-from app import create_app, money_to_pence
+from app import create_app, money_to_pence, next_recurring_date
 
 
 @pytest.fixture()
@@ -189,3 +189,65 @@ def test_existing_debt_database_is_migrated(tmp_path):
     with sqlite3.connect(database) as connection:
         columns = {row[1] for row in connection.execute("PRAGMA table_info(debts)")}
     assert {"debt_type", "apr_basis_points", "minimum_payment_pence", "due_day", "priority"} <= columns
+
+def test_monthly_recurrence_handles_end_of_month():
+    assert next_recurring_date(date(2026, 1, 31), "monthly") == date(2026, 2, 28)
+    assert next_recurring_date(date(2028, 1, 31), "monthly") == date(2028, 2, 29)
+
+def test_recurring_bill_can_be_recorded_and_advanced(client):
+    html = client.get("/recurring").get_data(as_text=True)
+    bills_id = find_category_id(html, "Bills")
+    response = client.post(
+        "/recurring",
+        data={
+            "csrf_token": token(client),
+            "kind": "expense",
+            "amount": "49.99",
+            "merchant": "Phone plan",
+            "category_id": bills_id,
+            "cadence": "monthly",
+            "next_due": date.today().isoformat(),
+        },
+        follow_redirects=True,
+    )
+    page = response.get_data(as_text=True)
+    assert "Phone plan" in page
+    assert "£49.99" in page
+
+    recorded = client.post(
+        "/recurring/1/post",
+        data={"csrf_token": token(client)},
+        follow_redirects=True,
+    ).get_data(as_text=True)
+    assert "Entry recorded and next date scheduled." in recorded
+    transactions = client.get(
+        f"/transactions?month={date.today().strftime('%Y-%m')}"
+    ).get_data(as_text=True)
+    assert "Phone plan" in transactions
+    assert "£49.99" in transactions
+
+def test_recurring_entry_can_be_skipped_without_transaction(client):
+    html = client.get("/recurring").get_data(as_text=True)
+    salary_id = find_category_id(html, "Salary")
+    client.post(
+        "/recurring",
+        data={
+            "csrf_token": token(client),
+            "kind": "income",
+            "amount": "500.00",
+            "merchant": "Side income",
+            "category_id": salary_id,
+            "cadence": "weekly",
+            "next_due": date.today().isoformat(),
+        },
+    )
+    page = client.post(
+        "/recurring/1/skip",
+        data={"csrf_token": token(client)},
+        follow_redirects=True,
+    ).get_data(as_text=True)
+    assert "Occurrence skipped." in page
+    assert (date.today() + date.resolution * 7).isoformat() in page
+    assert "Side income" not in client.get(
+        f"/transactions?month={date.today().strftime('%Y-%m')}"
+    ).get_data(as_text=True)

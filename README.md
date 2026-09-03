@@ -5,6 +5,9 @@ A private, mobile-first expense manager for the local Termux app suite. It track
 ## Features
 
 - Expense and income transaction tracking
+- Weekly and monthly recurring bills and income
+- Upcoming 30-day cash-flow forecast with projected available balance
+- One-tap record, skip-once and remove controls for scheduled entries
 - Separate lender debt cards with live outstanding balances
 - Income-funded debt repayments with payment history and undo support
 - Priority-debt safeguards, monthly minimums and due-date status

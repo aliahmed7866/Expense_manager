@@ -7,7 +7,7 @@ import re
 import secrets
 import sqlite3
 from calendar import monthrange
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
@@ -90,6 +90,16 @@ def valid_month(value: str | None) -> str:
     return value if value and MONTH_RE.fullmatch(value) else date.today().strftime("%Y-%m")
 
 
+def next_recurring_date(current: date, cadence: str) -> date:
+    if cadence == "weekly":
+        return current + timedelta(days=7)
+    if cadence == "monthly":
+        year = current.year + (1 if current.month == 12 else 0)
+        month = 1 if current.month == 12 else current.month + 1
+        return current.replace(year=year, month=month, day=min(current.day, monthrange(year, month)[1]))
+    raise ValueError("Choose a valid repeat frequency.")
+
+
 def create_app(test_config: dict | None = None) -> Flask:
     app = Flask(__name__)
     app.config.from_mapping(
@@ -154,6 +164,21 @@ def create_app(test_config: dict | None = None) -> Flask:
                     transaction_id INTEGER NOT NULL UNIQUE REFERENCES transactions(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS idx_debt_payments_debt ON debt_payments(debt_id);
+                CREATE TABLE IF NOT EXISTS recurring_entries (
+                    id INTEGER PRIMARY KEY,
+                    kind TEXT NOT NULL CHECK (kind IN ('expense', 'income')),
+                    amount_pence INTEGER NOT NULL CHECK (amount_pence > 0),
+                    merchant TEXT NOT NULL,
+                    category_id INTEGER NOT NULL REFERENCES categories(id),
+                    cadence TEXT NOT NULL CHECK (cadence IN ('weekly', 'monthly')),
+                    next_due TEXT NOT NULL,
+                    payment_method TEXT NOT NULL DEFAULT '',
+                    notes TEXT NOT NULL DEFAULT '',
+                    active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+                    last_posted_on TEXT,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_recurring_due ON recurring_entries(active, next_due);
                 CREATE TABLE IF NOT EXISTS app_settings (
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
@@ -240,6 +265,21 @@ def create_app(test_config: dict | None = None) -> Flask:
                         WHERE dp.debt_id=d.id)), 0) paid
                    FROM debts d WHERE d.archived=0"""
             ).fetchone()
+            upcoming = connection.execute(
+                """SELECT r.*, c.name category, c.colour FROM recurring_entries r
+                   JOIN categories c ON c.id=r.category_id
+                   WHERE r.active=1 AND r.next_due<=?
+                   ORDER BY r.next_due, r.id LIMIT 6""",
+                ((date.today() + timedelta(days=30)).isoformat(),),
+            ).fetchall()
+            scheduled_net = sum(
+                row["amount_pence"] if row["kind"] == "income" else -row["amount_pence"]
+                for row in upcoming
+            )
+            lifetime_balance = connection.execute(
+                """SELECT COALESCE(SUM(CASE WHEN kind='income' THEN amount_pence ELSE -amount_pence END), 0)
+                   FROM transactions"""
+            ).fetchone()[0]
             transaction_count = connection.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
         highest = max((row["amount_pence"] for row in days), default=1)
         category_total = sum(row["amount_pence"] for row in categories) or 1
@@ -247,6 +287,9 @@ def create_app(test_config: dict | None = None) -> Flask:
             "dashboard.html", month=month, totals=totals, budget=budget, recent=recent,
             categories=categories, category_total=category_total, days=days, highest=highest,
             debt_summary=debt_summary,
+            upcoming=upcoming,
+            scheduled_net=scheduled_net,
+            projected_balance=lifetime_balance + scheduled_net,
             first_run=transaction_count == 0 and debt_summary["starting"] == 0,
         )
 
@@ -315,6 +358,110 @@ def create_app(test_config: dict | None = None) -> Flask:
             connection.execute("DELETE FROM transactions WHERE id=?", (transaction_id,))
         flash("Transaction deleted.", "success")
         return redirect(request.form.get("next") or url_for("transactions"))
+
+    @app.route("/recurring", methods=["GET", "POST"])
+    def recurring():
+        if request.method == "POST":
+            try:
+                kind = request.form.get("kind", "expense")
+                if kind not in {"expense", "income"}:
+                    raise ValueError("Choose a valid entry type.")
+                amount = money_to_pence(request.form.get("amount", ""))
+                merchant = request.form.get("merchant", "").strip()
+                if not merchant or len(merchant) > 100:
+                    raise ValueError("Add a name (maximum 100 characters).")
+                category_id = int(request.form.get("category_id", ""))
+                cadence = request.form.get("cadence", "monthly")
+                if cadence not in {"weekly", "monthly"}:
+                    raise ValueError("Choose a valid repeat frequency.")
+                next_due = date.fromisoformat(request.form.get("next_due", ""))
+                with db() as connection:
+                    category = connection.execute(
+                        "SELECT id FROM categories WHERE id=? AND kind=?",
+                        (category_id, kind),
+                    ).fetchone()
+                    if not category:
+                        raise ValueError("Choose a category matching the entry type.")
+                    connection.execute(
+                        """INSERT INTO recurring_entries
+                           (kind,amount_pence,merchant,category_id,cadence,next_due,payment_method,notes)
+                           VALUES (?,?,?,?,?,?,?,?)""",
+                        (
+                            kind, amount, merchant, category_id, cadence, next_due.isoformat(),
+                            request.form.get("payment_method", "").strip()[:40],
+                            request.form.get("notes", "").strip()[:500],
+                        ),
+                    )
+                flash("Recurring entry saved.", "success")
+                return redirect(url_for("recurring"))
+            except (ValueError, TypeError) as exc:
+                flash(str(exc), "error")
+        with db() as connection:
+            rows = connection.execute(
+                """SELECT r.*,c.name category,c.colour FROM recurring_entries r
+                   JOIN categories c ON c.id=r.category_id
+                   WHERE r.active=1 ORDER BY r.next_due,r.id"""
+            ).fetchall()
+            categories = connection.execute("SELECT * FROM categories ORDER BY kind,name").fetchall()
+        return render_template("recurring.html", rows=rows, categories=categories)
+
+    @app.post("/recurring/<int:entry_id>/post")
+    def post_recurring(entry_id: int):
+        with db() as connection:
+            entry = connection.execute(
+                "SELECT * FROM recurring_entries WHERE id=? AND active=1",
+                (entry_id,),
+            ).fetchone()
+            if not entry:
+                abort(404)
+            scheduled = date.fromisoformat(entry["next_due"])
+            occurred_on = min(scheduled, date.today())
+            connection.execute(
+                """INSERT INTO transactions
+                   (occurred_on,kind,amount_pence,merchant,category_id,payment_method,notes)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (
+                    occurred_on.isoformat(), entry["kind"], entry["amount_pence"],
+                    entry["merchant"], entry["category_id"], entry["payment_method"],
+                    entry["notes"],
+                ),
+            )
+            connection.execute(
+                "UPDATE recurring_entries SET next_due=?,last_posted_on=? WHERE id=?",
+                (next_recurring_date(scheduled, entry["cadence"]).isoformat(),
+                 date.today().isoformat(), entry_id),
+            )
+        flash("Entry recorded and next date scheduled.", "success")
+        return redirect(request.form.get("next") or url_for("recurring"))
+
+    @app.post("/recurring/<int:entry_id>/skip")
+    def skip_recurring(entry_id: int):
+        with db() as connection:
+            entry = connection.execute(
+                "SELECT next_due,cadence FROM recurring_entries WHERE id=? AND active=1",
+                (entry_id,),
+            ).fetchone()
+            if not entry:
+                abort(404)
+            next_due = next_recurring_date(date.fromisoformat(entry["next_due"]), entry["cadence"])
+            connection.execute(
+                "UPDATE recurring_entries SET next_due=? WHERE id=?",
+                (next_due.isoformat(), entry_id),
+            )
+        flash("Occurrence skipped.", "success")
+        return redirect(request.form.get("next") or url_for("recurring"))
+
+    @app.post("/recurring/<int:entry_id>/delete")
+    def delete_recurring(entry_id: int):
+        with db() as connection:
+            changed = connection.execute(
+                "UPDATE recurring_entries SET active=0 WHERE id=? AND active=1",
+                (entry_id,),
+            ).rowcount
+        if not changed:
+            abort(404)
+        flash("Recurring entry removed.", "success")
+        return redirect(url_for("recurring"))
 
     @app.route("/budgets", methods=["GET", "POST"])
     def budgets():
