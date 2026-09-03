@@ -22,6 +22,7 @@ CATEGORY_COLOURS = {
     "Entertainment": "#f97316",
     "Health": "#10b981",
     "Travel": "#6366f1",
+    "Debt payment": "#ef476f",
     "Other": "#64748b",
     "Salary": "#22c55e",
 }
@@ -92,6 +93,20 @@ def create_app(test_config: dict | None = None) -> Flask:
                     amount_pence INTEGER NOT NULL CHECK (amount_pence > 0),
                     PRIMARY KEY (month, category_id)
                 );
+                CREATE TABLE IF NOT EXISTS debts (
+                    id INTEGER PRIMARY KEY,
+                    lender TEXT NOT NULL,
+                    starting_balance_pence INTEGER NOT NULL CHECK (starting_balance_pence > 0),
+                    notes TEXT NOT NULL DEFAULT '',
+                    created_on TEXT NOT NULL,
+                    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
+                );
+                CREATE TABLE IF NOT EXISTS debt_payments (
+                    id INTEGER PRIMARY KEY,
+                    debt_id INTEGER NOT NULL REFERENCES debts(id) ON DELETE CASCADE,
+                    transaction_id INTEGER NOT NULL UNIQUE REFERENCES transactions(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_debt_payments_debt ON debt_payments(debt_id);
                 """
             )
             for name, colour in CATEGORY_COLOURS.items():
@@ -153,11 +168,19 @@ def create_app(test_config: dict | None = None) -> Flask:
                    GROUP BY occurred_on ORDER BY occurred_on""",
                 (month,),
             ).fetchall()
+            debt_summary = connection.execute(
+                """SELECT COALESCE(SUM(d.starting_balance_pence), 0) starting,
+                    COALESCE(SUM((SELECT COALESCE(SUM(t.amount_pence), 0)
+                        FROM debt_payments dp JOIN transactions t ON t.id=dp.transaction_id
+                        WHERE dp.debt_id=d.id)), 0) paid
+                   FROM debts d WHERE d.archived=0"""
+            ).fetchone()
         highest = max((row["amount_pence"] for row in days), default=1)
         category_total = sum(row["amount_pence"] for row in categories) or 1
         return render_template(
             "dashboard.html", month=month, totals=totals, budget=budget, recent=recent,
             categories=categories, category_total=category_total, days=days, highest=highest,
+            debt_summary=debt_summary,
         )
 
     @app.route("/transactions", methods=["GET", "POST"])
@@ -265,6 +288,113 @@ def create_app(test_config: dict | None = None) -> Flask:
             connection.execute("DELETE FROM budgets WHERE month=? AND category_id=?", (month, category_id))
         flash("Budget removed.", "success")
         return redirect(url_for("budgets", month=month))
+
+    @app.route("/debts", methods=["GET", "POST"])
+    def debts():
+        if request.method == "POST":
+            try:
+                lender = request.form.get("lender", "").strip()
+                balance = money_to_pence(request.form.get("balance", ""))
+                if not lender or len(lender) > 100:
+                    raise ValueError("Add a lender name (maximum 100 characters).")
+                with db() as connection:
+                    connection.execute(
+                        "INSERT INTO debts(lender, starting_balance_pence, notes, created_on) VALUES (?, ?, ?, ?)",
+                        (lender, balance, request.form.get("notes", "").strip()[:500], date.today().isoformat()),
+                    )
+                flash("Debt added.", "success")
+                return redirect(url_for("debts"))
+            except ValueError as exc:
+                flash(str(exc), "error")
+
+        with db() as connection:
+            rows = connection.execute(
+                """SELECT d.*, COALESCE(SUM(t.amount_pence), 0) paid_pence,
+                    d.starting_balance_pence - COALESCE(SUM(t.amount_pence), 0) outstanding_pence,
+                    COUNT(dp.id) payment_count
+                   FROM debts d
+                   LEFT JOIN debt_payments dp ON dp.debt_id=d.id
+                   LEFT JOIN transactions t ON t.id=dp.transaction_id
+                   WHERE d.archived=0 GROUP BY d.id ORDER BY outstanding_pence DESC, d.id"""
+            ).fetchall()
+            cash = connection.execute(
+                """SELECT COALESCE(SUM(CASE WHEN kind='income' THEN amount_pence ELSE -amount_pence END), 0)
+                   available FROM transactions"""
+            ).fetchone()["available"]
+            history = connection.execute(
+                """SELECT dp.id, d.lender, t.occurred_on, t.amount_pence
+                   FROM debt_payments dp JOIN debts d ON d.id=dp.debt_id
+                   JOIN transactions t ON t.id=dp.transaction_id
+                   ORDER BY t.occurred_on DESC, dp.id DESC LIMIT 12"""
+            ).fetchall()
+        total_starting = sum(row["starting_balance_pence"] for row in rows)
+        total_paid = sum(row["paid_pence"] for row in rows)
+        return render_template(
+            "debts.html", rows=rows, history=history, available_income=max(cash, 0),
+            total_starting=total_starting, total_paid=total_paid,
+            total_outstanding=max(total_starting - total_paid, 0),
+        )
+
+    @app.post("/debts/<int:debt_id>/pay")
+    def pay_debt(debt_id: int):
+        try:
+            amount = money_to_pence(request.form.get("amount", ""))
+            paid_on = date.fromisoformat(request.form.get("paid_on", ""))
+            with db() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                debt = connection.execute(
+                    """SELECT d.*, d.starting_balance_pence - COALESCE(SUM(t.amount_pence), 0) outstanding
+                       FROM debts d LEFT JOIN debt_payments dp ON dp.debt_id=d.id
+                       LEFT JOIN transactions t ON t.id=dp.transaction_id
+                       WHERE d.id=? AND d.archived=0 GROUP BY d.id""",
+                    (debt_id,),
+                ).fetchone()
+                if not debt:
+                    raise ValueError("Debt not found.")
+                available = connection.execute(
+                    """SELECT COALESCE(SUM(CASE WHEN kind='income' THEN amount_pence ELSE -amount_pence END), 0)
+                       FROM transactions"""
+                ).fetchone()[0]
+                if amount > debt["outstanding"]:
+                    raise ValueError("Payment cannot be more than the outstanding balance.")
+                if amount > max(available, 0):
+                    raise ValueError("Not enough available income. Add income or reduce the payment.")
+                category_id = connection.execute(
+                    "SELECT id FROM categories WHERE name='Debt payment' AND kind='expense'"
+                ).fetchone()["id"]
+                cursor = connection.execute(
+                    """INSERT INTO transactions
+                       (occurred_on, kind, amount_pence, merchant, category_id, payment_method, notes)
+                       VALUES (?, 'expense', ?, ?, ?, ?, ?)""",
+                    (paid_on.isoformat(), amount, f'Debt payment · {debt["lender"]}', category_id,
+                     request.form.get("payment_method", "").strip()[:40], "Linked debt repayment"),
+                )
+                connection.execute(
+                    "INSERT INTO debt_payments(debt_id, transaction_id) VALUES (?, ?)",
+                    (debt_id, cursor.lastrowid),
+                )
+            flash(f'Payment to {debt["lender"]} recorded.', "success")
+        except (ValueError, TypeError) as exc:
+            flash(str(exc), "error")
+        return redirect(url_for("debts"))
+
+    @app.post("/debt-payments/<int:payment_id>/delete")
+    def delete_debt_payment(payment_id: int):
+        with db() as connection:
+            payment = connection.execute(
+                "SELECT transaction_id FROM debt_payments WHERE id=?", (payment_id,)
+            ).fetchone()
+            if payment:
+                connection.execute("DELETE FROM transactions WHERE id=?", (payment["transaction_id"],))
+                flash("Debt payment undone and income returned to the available pool.", "success")
+        return redirect(url_for("debts"))
+
+    @app.post("/debts/<int:debt_id>/archive")
+    def archive_debt(debt_id: int):
+        with db() as connection:
+            connection.execute("UPDATE debts SET archived=1 WHERE id=?", (debt_id,))
+        flash("Debt archived.", "success")
+        return redirect(url_for("debts"))
 
     @app.get("/export.csv")
     def export_csv():

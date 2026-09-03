@@ -1,5 +1,6 @@
 import csv
 import io
+import re
 
 import pytest
 
@@ -56,3 +57,58 @@ def test_csv_export(client):
     response = client.get("/export.csv")
     rows = list(csv.reader(io.StringIO(response.get_data(as_text=True))))
     assert rows[0][:4] == ["date", "type", "amount_gbp", "merchant"]
+
+
+def find_category_id(html, name):
+    match = re.search(rf'<option value="(\d+)" data-kind="[^"]+"[^>]*>{re.escape(name)}</option>', html)
+    assert match
+    return match.group(1)
+
+
+def add_income(client, amount="600.00"):
+    html = client.get("/transactions").get_data(as_text=True)
+    client.post(
+        "/transactions",
+        data={"csrf_token": token(client), "kind": "income", "amount": amount,
+              "merchant": "Monthly income", "occurred_on": "2026-09-03",
+              "category_id": find_category_id(html, "Salary")},
+    )
+
+
+def test_debt_payment_uses_available_income_and_can_be_undone(client):
+    client.get("/debts")
+    client.post(
+        "/debts",
+        data={"csrf_token": token(client), "lender": "Example Bank", "balance": "1000.00"},
+    )
+    add_income(client)
+    response = client.post(
+        "/debts/1/pay",
+        data={"csrf_token": token(client), "amount": "250.00", "paid_on": "2026-09-03"},
+        follow_redirects=True,
+    )
+    page = response.get_data(as_text=True)
+    assert "Payment to Example Bank recorded." in page
+    assert "£750.00" in page
+    assert "£350.00" in page
+    assert "£750.00" in client.get("/?month=2026-09").get_data(as_text=True)
+
+    undone = client.post(
+        "/debt-payments/1/delete", data={"csrf_token": token(client)}, follow_redirects=True
+    ).get_data(as_text=True)
+    assert "£1,000.00" in undone
+    assert "£600.00" in undone
+
+
+def test_debt_payment_cannot_exceed_available_income(client):
+    client.get("/debts")
+    client.post(
+        "/debts",
+        data={"csrf_token": token(client), "lender": "Example Bank", "balance": "100.00"},
+    )
+    response = client.post(
+        "/debts/1/pay",
+        data={"csrf_token": token(client), "amount": "10.00", "paid_on": "2026-09-03"},
+        follow_redirects=True,
+    )
+    assert "Not enough available income" in response.get_data(as_text=True)

@@ -5,6 +5,8 @@ A private, mobile-first expense manager for the local Termux app suite. It track
 ## Features
 
 - Expense and income transaction tracking
+- Separate lender debt cards with live outstanding balances
+- Income-funded debt repayments with payment history and undo support
 - Monthly totals, balance and daily spending chart
 - Category breakdown and monthly category budgets
 - Search and filtering

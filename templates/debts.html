@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Debts · Pocketwise{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Income-funded repayments</p><h1>Debt payoff</h1><p class="page-copy">Add each lender, then direct your available recorded income toward them.</p></div><a class="button primary" href="#add-debt">+ Add debt</a></div>
+<section class="stats debt-stats">
+  <article class="stat"><span>Total owed</span><strong class="negative">{{ total_outstanding|money }}</strong><small>Across active lenders</small></article>
+  <article class="stat"><span>Paid down</span><strong class="positive">{{ total_paid|money }}</strong><small>From {{ total_starting|money }} starting debt</small></article>
+  <article class="stat available"><span>Available income</span><strong>{{ available_income|money }}</strong><small>Income minus spending and repayments</small></article>
+</section>
+<div class="two-col debt-layout">
+  <section>
+    {% if rows %}<div class="debt-list">{% for row in rows %}
+      <article class="card debt-card">
+        <div class="section-head"><div><p class="eyebrow">Lender</p><h2>{{ row.lender }}</h2></div><strong class="debt-balance">{{ row.outstanding_pence|money }}</strong></div>
+        <div class="debt-progress"><i style="width:{{ [row.paid_pence / row.starting_balance_pence * 100, 100]|min }}%"></i></div>
+        <div class="debt-meta"><span>{{ row.paid_pence|money }} paid</span><span>{{ row.starting_balance_pence|money }} original</span></div>
+        {% if row.notes %}<p class="debt-note">{{ row.notes }}</p>{% endif %}
+        {% if row.outstanding_pence > 0 %}<form method="post" action="{{ url_for('pay_debt', debt_id=row.id) }}" class="payment-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Pay from available income<input name="amount" inputmode="decimal" placeholder="0.00" required></label><label>Date<input type="date" name="paid_on" value="{{ today }}" required></label><label>Method <span class="optional">optional</span><input name="payment_method" maxlength="40" placeholder="Bank transfer"></label><button class="primary">Record payment</button></form>{% else %}<div class="paid-off">✓ Paid off</div>{% endif %}
+        <form method="post" action="{{ url_for('archive_debt', debt_id=row.id) }}" data-confirm="Archive this debt? Its transactions will stay in your records."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="link-button">Archive debt</button></form>
+      </article>
+    {% endfor %}</div>{% else %}<section class="card empty debt-empty"><div><strong>No debts added</strong><p>Add a lender and balance to start a clear payoff plan.</p></div></section>{% endif %}
+  </section>
+  <aside>
+    <section class="card add-card" id="add-debt"><p class="eyebrow">New lender</p><h2>Add a debt</h2><form method="post" class="stack-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Lender<input name="lender" maxlength="100" placeholder="Bank, credit card or person" required></label><label>Current amount owed (£)<input name="balance" inputmode="decimal" placeholder="0.00" required></label><label>Note <span class="optional">optional</span><textarea name="notes" maxlength="500" rows="3" placeholder="Account, rate or repayment details"></textarea></label><button class="primary wide">Add debt</button></form></section>
+    <section class="card payment-history"><div class="section-head"><h2>Recent repayments</h2></div>{% if history %}<div class="history-list">{% for payment in history %}<div><span><strong>{{ payment.lender }}</strong><small>{{ payment.occurred_on }}</small></span><strong>{{ payment.amount_pence|money }}</strong><form method="post" action="{{ url_for('delete_debt_payment', payment_id=payment.id) }}" data-confirm="Undo this debt payment?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="icon-button" aria-label="Undo payment">×</button></form></div>{% endfor %}</div>{% else %}<p class="muted">No repayments yet.</p>{% endif %}</section>
+  </aside>
+</div>
+{% endblock %}
