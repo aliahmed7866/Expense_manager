@@ -240,12 +240,14 @@ def create_app(test_config: dict | None = None) -> Flask:
                         WHERE dp.debt_id=d.id)), 0) paid
                    FROM debts d WHERE d.archived=0"""
             ).fetchone()
+            transaction_count = connection.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
         highest = max((row["amount_pence"] for row in days), default=1)
         category_total = sum(row["amount_pence"] for row in categories) or 1
         return render_template(
             "dashboard.html", month=month, totals=totals, budget=budget, recent=recent,
             categories=categories, category_total=category_total, days=days, highest=highest,
             debt_summary=debt_summary,
+            first_run=transaction_count == 0 and debt_summary["starting"] == 0,
         )
 
     @app.route("/transactions", methods=["GET", "POST"])
@@ -283,6 +285,9 @@ def create_app(test_config: dict | None = None) -> Flask:
         month = valid_month(request.args.get("month"))
         query = request.args.get("q", "").strip()[:100]
         kind_filter = request.args.get("kind", "")
+        add_kind = request.args.get("add_kind", "expense")
+        if add_kind not in {"expense", "income"}:
+            add_kind = "expense"
         clauses = ["substr(t.occurred_on, 1, 7)=?"]
         params: list[object] = [month]
         if kind_filter in {"expense", "income"}:
@@ -301,7 +306,7 @@ def create_app(test_config: dict | None = None) -> Flask:
             categories = connection.execute("SELECT * FROM categories ORDER BY kind, name").fetchall()
         return render_template(
             "transactions.html", rows=rows, categories=categories, month=month,
-            query=query, kind_filter=kind_filter,
+            query=query, kind_filter=kind_filter, add_kind=add_kind,
         )
 
     @app.post("/transactions/<int:transaction_id>/delete")

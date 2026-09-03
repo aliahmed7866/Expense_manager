@@ -1,17 +1,23 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 
 registry = Path(sys.argv[1]).expanduser()
 port = int(sys.argv[2])
+aycf_root = Path(os.environ.get("AYCF_APP_DIR", Path.home() / "aycf-trip-planner")).expanduser()
 entry = {
     "id": "expenses",
     "name": "Expense Manager",
     "description": "Private spending, income and budget tracker",
     "service": "expense-manager",
+    "install_command": [
+        "bash",
+        str(aycf_root / "termux" / "install-expense-manager.sh"),
+    ],
     "port": port,
     "health_url": f"http://127.0.0.1:{port}/health",
     "open_url": f"http://127.0.0.1:{port}",

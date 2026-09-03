@@ -4,6 +4,8 @@
   <div><p class="eyebrow">Monthly overview</p><h1>See where your money goes.</h1></div>
   <form class="month-picker"><input type="month" name="month" value="{{ month }}" aria-label="Month"><button>View</button></form>
 </div>
+<div class="quick-actions" aria-label="Quick actions"><a class="quick-action expense" href="{{ url_for('transactions', add_kind='expense') }}#add"><span>−</span><strong>Add expense</strong><small>Money you spent</small></a><a class="quick-action income" href="{{ url_for('transactions', add_kind='income') }}#add"><span>+</span><strong>Add income</strong><small>Money received</small></a><a class="quick-action debt" href="{{ url_for('debts') }}"><span>↓</span><strong>Pay a debt</strong><small>Use available income</small></a></div>
+{% if first_run %}<section class="welcome-card card"><div><p class="eyebrow">Start here</p><h2>Your money overview builds itself</h2><p>Add income first, then record spending or debts. Pocketwise will calculate what remains automatically.</p></div><a class="button primary" href="{{ url_for('transactions', add_kind='income') }}#add">Add first income</a></section>{% endif %}
 <section class="stats">
   <article class="stat"><span>Income</span><strong class="positive">{{ totals.income|money }}</strong><small>This month</small></article>
   <article class="stat"><span>Spent</span><strong>{{ totals.expense|money }}</strong><small>This month</small></article>

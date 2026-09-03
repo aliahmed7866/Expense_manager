@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Transactions · Pocketwise{% endblock %}
 {% block content %}
-<div class="page-head"><div><p class="eyebrow">Money in and out</p><h1>Transactions</h1></div><a class="button primary" href="#add">+ Add transaction</a></div>
+<div class="page-head"><div><p class="eyebrow">Money in and out</p><h1>Transactions</h1></div><div class="head-actions"><a class="button" href="{{ url_for('transactions', add_kind='income') }}#add">+ Income</a><a class="button primary" href="{{ url_for('transactions', add_kind='expense') }}#add">+ Expense</a></div></div>
 <section class="card filters"><form method="get"><input type="month" name="month" value="{{ month }}"><input type="search" name="q" value="{{ query }}" placeholder="Search merchant, note or category"><select name="kind"><option value="">All types</option><option value="expense" {{ 'selected' if kind_filter == 'expense' }}>Expenses</option><option value="income" {{ 'selected' if kind_filter == 'income' }}>Income</option></select><button>Filter</button></form></section>
 <div class="two-col">
   <section class="card">
@@ -13,7 +13,7 @@
     <p class="eyebrow">Quick entry</p><h2>Add transaction</h2>
     <form method="post" class="stack-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="segmented"><label><input type="radio" name="kind" value="expense" checked><span>Expense</span></label><label><input type="radio" name="kind" value="income"><span>Income</span></label></div>
+      <div class="segmented"><label><input type="radio" name="kind" value="expense" {{ 'checked' if add_kind == 'expense' }}><span>Expense</span></label><label><input type="radio" name="kind" value="income" {{ 'checked' if add_kind == 'income' }}><span>Income</span></label></div>
       <label>Amount (£)<input name="amount" inputmode="decimal" placeholder="0.00" required></label>
       <label>Merchant or description<input name="merchant" maxlength="100" placeholder="e.g. Tesco" required></label>
       <div class="form-grid"><label>Date<input type="date" name="occurred_on" value="{{ today }}" required></label><label>Category<select name="category_id" required>{% for category in categories %}<option value="{{ category.id }}" data-kind="{{ category.kind }}" {{ 'hidden' if category.kind == 'income' }}>{{ category.name }}</option>{% endfor %}</select></label></div>

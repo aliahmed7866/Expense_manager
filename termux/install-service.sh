@@ -12,7 +12,14 @@ AYCF_REGISTRY="${AYCF_ADMIN_REGISTRY:-$HOME/.config/aycf/apps.json}"
 cd "$APP_DIR"
 command -v sv >/dev/null 2>&1 || pkg install -y termux-services
 [ -d "$VENV_DIR" ] || python -m venv "$VENV_DIR"
-"$VENV_DIR/bin/python" -m pip install -q -r requirements.txt
+REQ_HASH="$(sha256sum requirements.txt | awk '{print $1}')"
+REQ_STAMP="$VENV_DIR/.expense-requirements-sha256"
+if [ "$REQ_HASH" != "$(cat "$REQ_STAMP" 2>/dev/null || true)" ]; then
+  "$VENV_DIR/bin/python" -m pip install -q -r requirements.txt
+  printf '%s\n' "$REQ_HASH" > "$REQ_STAMP"
+else
+  echo "[Expense Manager] Dependencies unchanged."
+fi
 
 mkdir -p "$CONFIG_DIR" "$SERVICE_DIR" "$(dirname "$AYCF_REGISTRY")"
 chmod 700 "$CONFIG_DIR"
@@ -38,7 +45,6 @@ sv restart expense-manager >/dev/null 2>&1 || sv up expense-manager >/dev/null 2
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   if curl -fsS --max-time 5 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
     echo "[Expense Manager] Ready: http://127.0.0.1:$PORT"
-    sv restart aycf-admin >/dev/null 2>&1 || true
     exit 0
   fi
   sleep 2
