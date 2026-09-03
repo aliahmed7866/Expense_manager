@@ -9,10 +9,12 @@ from pathlib import Path
 registry = Path(sys.argv[1]).expanduser()
 port = int(sys.argv[2])
 aycf_root = Path(os.environ.get("AYCF_APP_DIR", Path.home() / "aycf-trip-planner")).expanduser()
+expense_root = Path(os.environ.get("EXPENSE_APP_DIR", Path.home() / "Expense_manager")).expanduser()
 entry = {
     "id": "expenses",
-    "name": "Expense Manager",
-    "description": "Private spending, income and budget tracker",
+    "name": "Pocketwise",
+    "description": "Expenses, income, budgets and debt payoff",
+    "working_dir": str(expense_root),
     "service": "expense-manager",
     "install_command": [
         "bash",
@@ -21,6 +23,7 @@ entry = {
     "port": port,
     "health_url": f"http://127.0.0.1:{port}/health",
     "open_url": f"http://127.0.0.1:{port}",
+    "process_match": f"{expense_root}/.venv/bin/python termux/run-web.py",
 }
 try:
     payload = json.loads(registry.read_text(encoding="utf-8")) if registry.exists() else {"apps": []}
