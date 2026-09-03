@@ -15,7 +15,11 @@ def test_admin_registration_includes_service_setup_command(tmp_path):
         env=env,
     )
     app = json.loads(registry.read_text(encoding="utf-8"))["apps"][0]
+    assert app["name"] == "Pocketwise"
+    assert app["description"] == "Expenses, income, budgets and debt payoff"
+    assert app["working_dir"] == str(Path.home() / "Expense_manager")
     assert app["service"] == "expense-manager"
+    assert app["process_match"] == "Expense_manager/.venv/bin/python termux/run-web.py"
     assert app["install_command"] == [
         "bash", str(tmp_path / "aycf" / "termux" / "install-expense-manager.sh")
     ]
