@@ -9,6 +9,7 @@
   <article class="stat"><span>Spent</span><strong>{{ totals.expense|money }}</strong><small>This month</small></article>
   <article class="stat"><span>Balance</span><strong class="{{ 'positive' if totals.income - totals.expense >= 0 else 'negative' }}">{{ (totals.income - totals.expense)|money }}</strong><small>Income minus spending</small></article>
   <article class="stat"><span>Budget left</span><strong class="{{ 'negative' if budget and budget - totals.expense < 0 }}">{{ (budget - totals.expense)|money if budget else 'Not set' }}</strong><small>{{ budget|money if budget else 'Add category budgets' }}</small></article>
+  <a class="stat stat-link" href="{{ url_for('debts') }}"><span>Debt remaining</span><strong class="{{ 'negative' if debt_summary.starting - debt_summary.paid > 0 }}">{{ (debt_summary.starting - debt_summary.paid)|money }}</strong><small>{{ debt_summary.paid|money }} paid down</small></a>
 </section>
 <div class="dashboard-grid">
   <section class="card spending-card">

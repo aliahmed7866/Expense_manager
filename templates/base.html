@@ -15,6 +15,7 @@
         <a class="{{ 'active' if request.endpoint == 'dashboard' }}" href="{{ url_for('dashboard') }}">Overview</a>
         <a class="{{ 'active' if request.endpoint in ('transactions','delete_transaction') }}" href="{{ url_for('transactions') }}">Transactions</a>
         <a class="{{ 'active' if request.endpoint in ('budgets','delete_budget') }}" href="{{ url_for('budgets') }}">Budgets</a>
+        <a class="{{ 'active' if request.endpoint in ('debts','pay_debt','delete_debt_payment','archive_debt','edit_debt','set_debt_strategy') }}" href="{{ url_for('debts') }}">Debts</a>
         <a href="{{ url_for('export_csv') }}">Export data</a>
       </nav>
       <p class="privacy-note">Stored privately on this device.</p>
@@ -31,6 +32,7 @@
     <a class="{{ 'active' if request.endpoint == 'dashboard' }}" href="{{ url_for('dashboard') }}">Overview</a>
     <a class="{{ 'active' if request.endpoint == 'transactions' }}" href="{{ url_for('transactions') }}">Transactions</a>
     <a class="{{ 'active' if request.endpoint == 'budgets' }}" href="{{ url_for('budgets') }}">Budgets</a>
+    <a class="{{ 'active' if request.endpoint == 'debts' }}" href="{{ url_for('debts') }}">Debts</a>
   </nav>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
