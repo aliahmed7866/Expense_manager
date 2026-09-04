@@ -2,7 +2,7 @@
   "name": "Pocketwise",
   "short_name": "Pocketwise",
   "description": "Private local expense, budget and debt manager.",
-  "id": "/",
+  "id": "/pocketwise-app",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
