@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_pwa_installability_contract():
     manifest = json.loads((ROOT / "static" / "manifest.webmanifest").read_text(encoding="utf-8"))
     assert manifest["display"] == "standalone"
+    assert manifest["id"] == "/pocketwise-app"
     assert manifest["start_url"] == "/"
     assert manifest["scope"] == "/"
     assert {"192x192", "512x512"} <= {icon["sizes"] for icon in manifest["icons"]}
