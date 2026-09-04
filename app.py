@@ -715,6 +715,14 @@ def create_app(test_config: dict | None = None) -> Flask:
             headers={"Content-Disposition": f"attachment; filename=expenses-{date.today().isoformat()}.csv"},
         )
 
+    @app.get("/service-worker.js")
+    def service_worker():
+        response = app.send_static_file("service-worker.js")
+        response.headers["Content-Type"] = "application/javascript"
+        response.headers["Cache-Control"] = "no-cache"
+        response.headers["Service-Worker-Allowed"] = "/"
+        return response
+
     @app.get("/health")
     def health():
         try:
