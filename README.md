@@ -53,3 +53,9 @@ If the service is not installed yet, the admin hub can run its configured setup 
 pip install pytest
 pytest -q
 ```
+
+## Install as a phone app
+
+Keep Pocketwise running in Termux, open its local URL in Chrome, then use the in-app **Install app** button (or Chrome's **Install app / Add to Home screen** menu). The installed icon opens Pocketwise in its own app window and provides shortcuts for income, expenses and debts where supported.
+
+The Termux service, SQLite data and auto-deploy process are unchanged. If the service is stopped, the installed app shows a short offline message directing you to start Pocketwise from the Admin Hub; financial pages and API responses are never stored as stale offline data.
