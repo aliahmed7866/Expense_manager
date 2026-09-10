@@ -27,3 +27,15 @@ def test_admin_registration_includes_service_setup_command(tmp_path):
     assert app["install_command"] == [
         "bash", str(tmp_path / "aycf" / "termux" / "install-expense-manager.sh")
     ]
+
+
+def test_auto_deploy_is_noninteractive_observable_and_runnable_once():
+    script = (Path(__file__).parents[1] / "termux" / "auto-deploy.sh").read_text(encoding="utf-8")
+    assert "GIT_TERMINAL_PROMPT=0" in script
+    assert "credential.helper=" in script
+    assert "https://github.com/aliahmed7866/Expense_manager.git" in script
+    assert '"${1:-}" = "--once"' in script
+    assert "deploy-status.txt" in script
+    assert "deploy.log" in script
+    assert "git merge --ff-only" in script
+    assert 'exec bash "$APP_DIR/termux/auto-deploy.sh"' in script
