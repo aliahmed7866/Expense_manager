@@ -1,7 +1,7 @@
 {
   "name": "Pocketwise",
   "short_name": "Pocketwise",
-  "description": "Private local expense, budget and debt manager.",
+  "description": "Private local expense, debt and home-deposit planner.",
   "id": "/pocketwise-app",
   "start_url": "/",
   "scope": "/",
@@ -53,6 +53,11 @@
       "name": "Pay debt",
       "short_name": "Debts",
       "url": "/debts"
+    },
+    {
+      "name": "Open home plan",
+      "short_name": "Home plan",
+      "url": "/plan"
     }
   ]
 }

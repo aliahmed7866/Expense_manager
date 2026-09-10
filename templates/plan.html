@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% block title %}Home plan · Pocketwise{% endblock %}
+{% macro money_input(name, label, help='') %}
+  <label>{{ label }}<input name="{{ name }}" inputmode="decimal" value="{{ '%.2f'|format(values[name]) }}" required>{% if help %}<small>{{ help }}</small>{% endif %}</label>
+{% endmacro %}
+{% macro month_input(name, label) %}
+  <label>{{ label }}<input type="month" name="{{ name }}" value="{{ values[name] }}" required></label>
+{% endmacro %}
+{% block content %}
+<div class="page-head plan-head">
+  <div><p class="eyebrow">{{ projection.target_month }} home goal</p><h1>Your route to the deposit.</h1><p class="page-copy">A live version of your financial plan. Update assumptions as payslips and balances become actual.</p></div>
+  <a class="button" href="#assumptions">Update figures</a>
+</div>
+
+<section class="plan-hero card {{ 'on-track' if projection.gap == 0 else 'needs-work' }}">
+  <div>
+    <p class="eyebrow">Safe deposit forecast</p>
+    <strong class="hero-number">{{ projection.safe_deposit|money }}</strong>
+    <p>By {{ values.target_month }} after keeping {{ projection.reserved|money }} aside for buying costs and your emergency buffer.</p>
+  </div>
+  <div class="goal-ring" style="--progress:{{ [projection.safe_deposit / projection.goal * 100 if projection.goal else 0, 100]|min }}%">
+    <span>{{ [projection.safe_deposit / projection.goal * 100 if projection.goal else 0, 999]|min|round|int }}%</span><small>of goal</small>
+  </div>
+  <div class="plan-verdict">
+    {% if projection.gap %}<span>Gap to close</span><strong class="negative">{{ projection.gap|money }}</strong>{% else %}<span>Headroom</span><strong class="positive">{{ projection.ahead|money }}</strong>{% endif %}
+    <small>Target {{ projection.goal|money }}</small>
+  </div>
+</section>
+
+<section class="stats plan-stats">
+  <article class="stat"><span>Monthly surplus now</span><strong>{{ projection.monthly_surplus_before|money }}</strong><small>After expenses and travel</small></article>
+  <article class="stat"><span>From {{ values.reduction_month }}</span><strong class="positive">{{ projection.monthly_surplus_after|money }}</strong><small>If the full reduction is captured</small></article>
+  <article class="stat"><span>Debt-free forecast</span><strong class="{{ 'positive' if projection.debt_remaining == 0 else 'negative' }}">{{ projection.debt_free_month or 'After target' }}</strong><small>{{ 'Uses your tracked debts' if projection.used_tracked_debt else 'Uses the £10k baseline' }}</small></article>
+  <article class="stat"><span>Projected LISA</span><strong>{{ projection.lisa|money }}</strong><small>Includes assumed 25% bonuses</small></article>
+</section>
+
+{% if projection.warnings %}<section class="plan-alerts" aria-label="Plan checks">{% for warning in projection.warnings %}<div><span>!</span><p>{{ warning }}</p></div>{% endfor %}</section>{% endif %}
+
+<div class="plan-grid">
+  <section class="card">
+    <div class="section-head"><div><p class="eyebrow">Month by month</p><h2>Pay debt first, then build the house fund</h2></div></div>
+    <div class="timeline-table" role="region" aria-label="Home plan monthly projection" tabindex="0">
+      <table>
+        <thead><tr><th>Month</th><th>Surplus</th><th>Bonus</th><th>Debt paid</th><th>LISA</th><th>House cash</th><th>Debt left</th></tr></thead>
+        <tbody>{% for row in projection.timeline %}<tr><td><strong>{{ row.month }}</strong></td><td>{{ row.surplus|money }}</td><td>{{ row.bonus|money }}</td><td>{{ row.debt_payment|money }}</td><td>{{ row.lisa_contribution|money }}</td><td>{{ row.house_cash|money }}</td><td class="{{ 'positive' if row.debt_remaining == 0 else '' }}">{{ row.debt_remaining|money }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    <p class="plan-note">The forecast ignores card interest until you enter each card and APR on the Debts page. LISA bonuses and timing remain planning assumptions—do not make completion depend on an unconfirmed bonus.</p>
+  </section>
+
+  <aside class="plan-side">
+    <section class="card checkpoint-card"><p class="eyebrow">Payday order</p><h2>Keep the plan automatic</h2><ol><li>Fund bills and normal living costs.</li><li>Ring-fence the £{{ '%.0f'|format(values.travel_fund) }} travel pot.</li><li>Keep the emergency buffer accessible.</li><li>Cover every card minimum, then attack the highest APR.</li><li>Once debt is zero, redirect the same payment to the house fund.</li></ol></section>
+    <section class="card breakdown-card"><p class="eyebrow">At the target</p><h2>What the forecast contains</h2><dl><div><dt>LISA</dt><dd>{{ projection.lisa|money }}</dd></div><div><dt>Cash outside LISA</dt><dd>{{ projection.cash|money }}</dd></div><div><dt>Full deposit pot</dt><dd>{{ projection.deposit_pot|money }}</dd></div><div><dt>Safety reserves</dt><dd>−{{ projection.reserved|money }}</dd></div><div class="total"><dt>Safe deposit</dt><dd>{{ projection.safe_deposit|money }}</dd></div></dl></section>
+  </aside>
+</div>
+
+<section class="card assumptions-card" id="assumptions">
+  <div class="section-head"><div><p class="eyebrow">Editable baseline</p><h2>Replace estimates with real figures</h2></div><span class="tag">Saved on this device</span></div>
+  <form method="post" class="plan-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <fieldset><legend>Income and monthly spending</legend><div class="form-grid three">
+      {{ money_input('gross_salary', 'Gross annual salary (£)') }}
+      {{ money_input('take_home', 'Monthly take-home (£)', 'Replace after the first payslip at the new salary.') }}
+      {{ money_input('pension_student', 'Pension + student loan (£/month)', 'For reference; take-home should already include this.') }}
+      {{ money_input('normal_expenses', 'Normal expenses (£/month)') }}
+      {{ money_input('travel_fund', 'Travel pot (£/month)', 'Protected while the rest of the surplus clears debt.') }}
+      {{ money_input('expense_reduction', 'Expected expense drop (£/month)') }}
+      <label>Is travel included in normal expenses?<select name="travel_in_expenses"><option value="no" {{ 'selected' if values.travel_in_expenses == 'no' }}>No — keep £300 separate</option><option value="yes" {{ 'selected' if values.travel_in_expenses == 'yes' }}>Yes — do not subtract it again</option></select></label>
+      {{ money_input('bonus_net', 'Estimated net bonus (£)', 'Baseline is deliberately cautious at £4,000.') }}
+    </div></fieldset>
+    <fieldset><legend>Balances, targets and reserves</legend><div class="form-grid three">
+      {{ money_input('current_lisa', 'Current LISA balance (£)') }}
+      {{ money_input('lisa_contributed_current_year', 'LISA paid in since 6 April 2026 (£)', 'Used to avoid planning beyond the working annual allowance.') }}
+      {{ money_input('cash_outside_lisa', 'Cash outside LISA (£)') }}
+      {{ money_input('card_debt', 'Card-debt baseline (£)', 'Used only until you add real debts on the Debts page.') }}
+      {{ money_input('deposit_goal', 'Deposit goal (£)') }}
+      {{ money_input('buying_costs', 'Buying-cost reserve (£)', 'Legal fees, survey, moving and other purchase costs.') }}
+      {{ money_input('emergency_buffer', 'Emergency buffer (£)') }}
+      {{ money_input('property_price', 'Target property price (£)', 'Leave at zero until chosen.') }}
+      <label>UK nation<input name="uk_nation" maxlength="40" value="{{ values.uk_nation }}" placeholder="England, Scotland, Wales or NI"><small>Useful because purchase taxes and processes differ.</small></label>
+    </div></fieldset>
+    <fieldset><legend>Timing and LISA contributions</legend><div class="form-grid three">
+      {{ month_input('start_month', 'Plan starts') }}
+      {{ month_input('reduction_month', 'Lower expenses begin') }}
+      {{ month_input('bonus_month', 'Net bonus arrives') }}
+      {{ money_input('lisa_one', 'First LISA contribution (£)') }}
+      {{ month_input('lisa_one_month', 'First contribution month') }}
+      {{ money_input('lisa_two', 'Second LISA contribution (£)') }}
+      {{ month_input('lisa_two_month', 'Second contribution month') }}
+      {{ month_input('target_month', 'Purchase target') }}
+    </div></fieldset>
+    <button class="primary plan-save">Recalculate and save plan</button>
+  </form>
+</section>
+{% endblock %}

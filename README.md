@@ -15,6 +15,9 @@ A private, mobile-first expense manager for the local Termux app suite. It track
 - Editable APR, debt type, lender and repayment details
 - Monthly totals, balance and daily spending chart
 - Category breakdown and monthly category budgets
+- Editable May 2027 home-purchase baseline with debt-first monthly projection
+- LISA contribution, bonus, deposit-gap, buying-cost and emergency-buffer planning
+- Automatically replaces the £10,000 debt assumption with real tracked balances
 - Search and filtering
 - CSV export
 - CSRF-protected forms and safe integer money storage
