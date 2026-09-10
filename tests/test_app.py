@@ -229,6 +229,7 @@ def test_tracked_debt_replaces_plan_debt_baseline(client):
 
 
 def test_home_plan_settings_can_be_updated(client):
+    client.get("/plan")
     data = {"csrf_token": token(client)}
     money_fields = [
         "gross_salary", "take_home", "normal_expenses", "travel_fund",
