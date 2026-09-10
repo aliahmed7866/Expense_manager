@@ -29,6 +29,48 @@ CATEGORY_COLOURS = {
 }
 MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
+# Starting assumptions from the user's September 2026 home-purchase plan. They live
+# in app_settings so an existing database gains the plan without inventing bank
+# transactions or lender records. Every figure is editable from the Plan screen.
+FINANCIAL_PLAN_DEFAULTS = {
+    "plan_gross_salary_pence": "6700000",
+    "plan_take_home_pence": "400000",
+    "plan_normal_expenses_pence": "170000",
+    "plan_travel_fund_pence": "30000",
+    "plan_expense_reduction_pence": "50000",
+    "plan_current_lisa_pence": "1500000",
+    "plan_cash_outside_lisa_pence": "0",
+    "plan_card_debt_pence": "1000000",
+    "plan_deposit_goal_pence": "3000000",
+    "plan_bonus_net_pence": "400000",
+    "plan_buying_costs_pence": "0",
+    "plan_emergency_buffer_pence": "100000",
+    "plan_lisa_one_pence": "400000",
+    "plan_lisa_two_pence": "400000",
+    "plan_lisa_contributed_current_year_pence": "0",
+    "plan_start_month": "2026-10",
+    "plan_reduction_month": "2026-11",
+    "plan_bonus_month": "2027-03",
+    "plan_lisa_one_month": "2027-03",
+    "plan_lisa_two_month": "2027-04",
+    "plan_target_month": "2027-05",
+    "plan_property_price_pence": "0",
+    "plan_uk_nation": "",
+    "plan_travel_in_expenses": "no",
+    "plan_pension_student_pence": "0",
+}
+
+PLAN_MONEY_FIELDS = {
+    "gross_salary", "take_home", "normal_expenses", "travel_fund",
+    "expense_reduction", "current_lisa", "cash_outside_lisa", "card_debt",
+    "deposit_goal", "bonus_net", "buying_costs", "emergency_buffer",
+    "lisa_one", "lisa_two", "lisa_contributed_current_year", "property_price", "pension_student",
+}
+PLAN_MONTH_FIELDS = {
+    "start_month", "reduction_month", "bonus_month", "lisa_one_month",
+    "lisa_two_month", "target_month",
+}
+
 
 def money_to_pence(value: str) -> int:
     try:
@@ -49,6 +91,18 @@ def optional_money_to_pence(value: str | None) -> int:
         raise ValueError("Enter a valid minimum payment.") from None
     if amount < 0 or amount > Decimal("99999999.99"):
         raise ValueError("Minimum payment cannot be negative.")
+    return int(amount * 100)
+
+
+def nonnegative_money_to_pence(value: str | None, label: str = "Amount") -> int:
+    if value is None or not value.strip():
+        return 0
+    try:
+        amount = Decimal(value.strip()).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        raise ValueError(f"Enter a valid {label.lower()}.") from None
+    if amount < 0 or amount > Decimal("99999999.99"):
+        raise ValueError(f"{label} cannot be negative.")
     return int(amount * 100)
 
 
@@ -88,6 +142,118 @@ def debt_form_values(form) -> dict:
 
 def valid_month(value: str | None) -> str:
     return value if value and MONTH_RE.fullmatch(value) else date.today().strftime("%Y-%m")
+
+
+def month_sequence(start: str, end: str) -> list[str]:
+    if not MONTH_RE.fullmatch(start or "") or not MONTH_RE.fullmatch(end or "") or start > end:
+        raise ValueError("The target month must be the same as or later than the plan start.")
+    current = date.fromisoformat(f"{start}-01")
+    finish = date.fromisoformat(f"{end}-01")
+    result = []
+    while current <= finish:
+        result.append(current.strftime("%Y-%m"))
+        year = current.year + (current.month == 12)
+        month = 1 if current.month == 12 else current.month + 1
+        current = current.replace(year=year, month=month)
+    return result
+
+
+def build_financial_projection(settings: dict[str, str], tracked_debt_pence: int | None = None) -> dict:
+    def amount(name: str) -> int:
+        return max(int(settings.get(f"plan_{name}_pence", "0") or 0), 0)
+
+    start = settings["plan_start_month"]
+    target = settings["plan_target_month"]
+    months = month_sequence(start, target)
+    take_home = amount("take_home")
+    normal_expenses = amount("normal_expenses")
+    travel = 0 if settings.get("plan_travel_in_expenses") == "yes" else amount("travel_fund")
+    reduction = amount("expense_reduction")
+    debt = max(tracked_debt_pence, 0) if tracked_debt_pence is not None else amount("card_debt")
+    used_tracked_debt = tracked_debt_pence is not None
+    starting_debt = debt
+    lisa = amount("current_lisa")
+    cash = amount("cash_outside_lisa")
+    total_surplus = 0
+    total_debt_paid = 0
+    total_lisa_contributed = 0
+    timeline = []
+
+    lisa_allowance = 400_000
+    first_lisa = min(amount("lisa_one"), max(lisa_allowance - amount("lisa_contributed_current_year"), 0))
+    second_lisa = min(amount("lisa_two"), lisa_allowance)
+    lisa_events = {
+        settings["plan_lisa_one_month"]: first_lisa,
+        settings["plan_lisa_two_month"]: second_lisa,
+    }
+    # If both contributions are assigned to the same month, retain both.
+    if settings["plan_lisa_one_month"] == settings["plan_lisa_two_month"]:
+        lisa_events[settings["plan_lisa_one_month"]] = first_lisa + second_lisa
+
+    for month in months:
+        effective_expenses = max(normal_expenses - (reduction if month >= settings["plan_reduction_month"] else 0), 0)
+        surplus = max(take_home - effective_expenses - travel, 0)
+        bonus = amount("bonus_net") if month == settings["plan_bonus_month"] else 0
+        available = surplus + bonus
+        debt_payment = min(debt, available)
+        debt -= debt_payment
+        available -= debt_payment
+        cash += available
+        planned_lisa = lisa_events.get(month, 0)
+        lisa_contribution = min(planned_lisa, cash)
+        cash -= lisa_contribution
+        lisa += lisa_contribution + round(lisa_contribution * 0.25)
+        total_surplus += surplus
+        total_debt_paid += debt_payment
+        total_lisa_contributed += lisa_contribution
+        timeline.append({
+            "month": month,
+            "surplus": surplus,
+            "bonus": bonus,
+            "debt_payment": debt_payment,
+            "lisa_contribution": lisa_contribution,
+            "house_cash": cash,
+            "debt_remaining": debt,
+        })
+
+    reserved = amount("buying_costs") + amount("emergency_buffer")
+    deposit_pot = lisa + cash
+    safe_deposit = lisa + max(cash - reserved, 0)
+    goal = amount("deposit_goal")
+    warnings = []
+    if debt:
+        warnings.append("Debt is not projected to be cleared by the target month.")
+    if total_lisa_contributed < first_lisa + second_lisa:
+        warnings.append("The projected cash flow does not fully fund both planned LISA contributions.")
+    if amount("lisa_one") > first_lisa:
+        warnings.append("The first planned LISA contribution exceeds the remaining £4,000 working allowance.")
+    if amount("buying_costs") == 0:
+        warnings.append("Buying costs are still unset, so the safe-deposit figure is incomplete.")
+    if safe_deposit < goal:
+        warnings.append("The deposit goal is not yet covered after the current safety reserves.")
+
+    debt_free_month = next((row["month"] for row in timeline if row["debt_remaining"] == 0), None)
+    return {
+        "timeline": timeline,
+        "target_month": target,
+        "starting_debt": starting_debt,
+        "used_tracked_debt": used_tracked_debt,
+        "debt_remaining": debt,
+        "debt_free_month": debt_free_month,
+        "total_surplus": total_surplus,
+        "total_debt_paid": total_debt_paid,
+        "lisa": lisa,
+        "cash": cash,
+        "deposit_pot": deposit_pot,
+        "safe_deposit": safe_deposit,
+        "goal": goal,
+        "gap": max(goal - safe_deposit, 0),
+        "ahead": max(safe_deposit - goal, 0),
+        "reserved": reserved,
+        "monthly_surplus_before": max(take_home - normal_expenses - travel, 0),
+        "monthly_surplus_after": max(take_home - max(normal_expenses - reduction, 0) - travel, 0),
+        "warnings": warnings,
+    }
 
 
 def next_recurring_date(current: date, cadence: str) -> date:
@@ -199,6 +365,10 @@ def create_app(test_config: dict | None = None) -> Flask:
             connection.execute(
                 "INSERT OR IGNORE INTO app_settings(key, value) VALUES ('debt_strategy', 'avalanche')"
             )
+            connection.executemany(
+                "INSERT OR IGNORE INTO app_settings(key, value) VALUES (?, ?)",
+                FINANCIAL_PLAN_DEFAULTS.items(),
+            )
             for name, colour in CATEGORY_COLOURS.items():
                 kind = "income" if name == "Salary" else "expense"
                 connection.execute(
@@ -281,6 +451,19 @@ def create_app(test_config: dict | None = None) -> Flask:
                    FROM transactions"""
             ).fetchone()[0]
             transaction_count = connection.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+            plan_settings = {
+                row["key"]: row["value"]
+                for row in connection.execute(
+                    "SELECT key, value FROM app_settings WHERE key LIKE 'plan_%'"
+                )
+            }
+        for key, value in FINANCIAL_PLAN_DEFAULTS.items():
+            plan_settings.setdefault(key, value)
+        tracked_debt = (
+            max(debt_summary["starting"] - debt_summary["paid"], 0)
+            if debt_summary["starting"] > 0 else None
+        )
+        financial_projection = build_financial_projection(plan_settings, tracked_debt)
         highest = max((row["amount_pence"] for row in days), default=1)
         category_total = sum(row["amount_pence"] for row in categories) or 1
         return render_template(
@@ -291,6 +474,7 @@ def create_app(test_config: dict | None = None) -> Flask:
             scheduled_net=scheduled_net,
             projected_balance=lifetime_balance + scheduled_net,
             first_run=transaction_count == 0 and debt_summary["starting"] == 0,
+            financial_projection=financial_projection,
         )
 
     @app.route("/transactions", methods=["GET", "POST"])
@@ -505,6 +689,63 @@ def create_app(test_config: dict | None = None) -> Flask:
             connection.execute("DELETE FROM budgets WHERE month=? AND category_id=?", (month, category_id))
         flash("Budget removed.", "success")
         return redirect(url_for("budgets", month=month))
+
+    @app.route("/plan", methods=["GET", "POST"])
+    def financial_plan():
+        if request.method == "POST":
+            try:
+                updates: dict[str, str] = {}
+                for field in PLAN_MONEY_FIELDS:
+                    updates[f"plan_{field}_pence"] = str(
+                        nonnegative_money_to_pence(request.form.get(field), field.replace("_", " ").title())
+                    )
+                for field in PLAN_MONTH_FIELDS:
+                    value = request.form.get(field, "")
+                    if not MONTH_RE.fullmatch(value):
+                        raise ValueError(f"Choose a valid {field.replace('_', ' ')}.")
+                    updates[f"plan_{field}"] = value
+                month_sequence(updates["plan_start_month"], updates["plan_target_month"])
+                travel_in_expenses = request.form.get("travel_in_expenses", "no")
+                if travel_in_expenses not in {"yes", "no"}:
+                    raise ValueError("Choose whether travel is included in normal expenses.")
+                updates["plan_travel_in_expenses"] = travel_in_expenses
+                updates["plan_uk_nation"] = request.form.get("uk_nation", "").strip()[:40]
+                with db() as connection:
+                    connection.executemany(
+                        """INSERT INTO app_settings(key, value) VALUES (?, ?)
+                           ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
+                        updates.items(),
+                    )
+                flash("Home plan updated with your latest figures.", "success")
+                return redirect(url_for("financial_plan"))
+            except (ValueError, TypeError) as exc:
+                flash(str(exc), "error")
+
+        with db() as connection:
+            settings = {
+                row["key"]: row["value"]
+                for row in connection.execute(
+                    "SELECT key, value FROM app_settings WHERE key LIKE 'plan_%'"
+                )
+            }
+            tracked_debt_row = connection.execute(
+                """SELECT COUNT(*) debt_count, COALESCE(SUM(d.starting_balance_pence - COALESCE((
+                       SELECT SUM(t.amount_pence) FROM debt_payments dp
+                       JOIN transactions t ON t.id=dp.transaction_id WHERE dp.debt_id=d.id
+                   ), 0)), 0) outstanding FROM debts d WHERE d.archived=0"""
+            ).fetchone()
+        for key, value in FINANCIAL_PLAN_DEFAULTS.items():
+            settings.setdefault(key, value)
+        tracked_debt = max(tracked_debt_row["outstanding"], 0) if tracked_debt_row["debt_count"] else None
+        projection = build_financial_projection(settings, tracked_debt)
+        values = {
+            field: int(settings[f"plan_{field}_pence"]) / 100
+            for field in PLAN_MONEY_FIELDS
+        }
+        values.update({field: settings[f"plan_{field}"] for field in PLAN_MONTH_FIELDS})
+        values["uk_nation"] = settings.get("plan_uk_nation", "")
+        values["travel_in_expenses"] = settings.get("plan_travel_in_expenses", "no")
+        return render_template("plan.html", values=values, projection=projection)
 
     @app.route("/debts", methods=["GET", "POST"])
     def debts():

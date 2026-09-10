@@ -110,7 +110,7 @@ main {
 }
 .quick-actions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -800,6 +800,246 @@ button,
   color: var(--muted);
   font-size: 0.75rem;
 }
+.quick-action.plan > span {
+  background: #17364a;
+  color: #9ad8ff;
+}
+.home-progress-card {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(180px, 0.8fr) auto;
+  align-items: center;
+  gap: 22px;
+  margin-bottom: 14px;
+  border-color: #28536b;
+}
+.home-progress-card p:last-child {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.home-progress {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #1a2b3d;
+}
+.home-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--blue), var(--green));
+}
+.plan-head {
+  align-items: flex-end;
+}
+.plan-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) auto minmax(160px, 0.55fr);
+  align-items: center;
+  gap: 28px;
+  margin-bottom: 14px;
+  overflow: hidden;
+  border-color: #31556e;
+  background: radial-gradient(circle at 75% 20%, #173d4d, transparent 42%), linear-gradient(145deg, #102437, #0b1723);
+}
+.plan-hero.on-track {
+  border-color: #28715a;
+}
+.hero-number {
+  display: block;
+  margin-bottom: 8px;
+  font-size: clamp(2.1rem, 6vw, 4.4rem);
+  line-height: 1;
+  letter-spacing: -0.06em;
+}
+.plan-hero p:last-child {
+  max-width: 650px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.goal-ring {
+  display: grid;
+  place-content: center;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  background: radial-gradient(circle at center, #0d1b29 57%, transparent 59%), conic-gradient(var(--green) var(--progress), #22374a 0);
+  text-align: center;
+}
+.goal-ring span,
+.goal-ring small {
+  display: block;
+}
+.goal-ring span {
+  font-size: 1.35rem;
+  font-weight: 850;
+}
+.goal-ring small,
+.plan-verdict small {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.plan-verdict span,
+.plan-verdict strong,
+.plan-verdict small {
+  display: block;
+}
+.plan-verdict strong {
+  margin: 8px 0 4px;
+  font-size: 1.5rem;
+}
+.plan-stats {
+  grid-template-columns: repeat(4, 1fr);
+}
+.plan-alerts {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.plan-alerts > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border: 1px solid #624c25;
+  border-radius: 12px;
+  background: #352b19;
+  color: #f8dda0;
+  font-size: 0.8rem;
+}
+.plan-alerts span {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #735b2a;
+  font-weight: 900;
+}
+.plan-alerts p {
+  margin: 0;
+}
+.plan-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.55fr);
+  align-items: start;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.plan-side {
+  display: grid;
+  gap: 14px;
+}
+.timeline-table {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.timeline-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.timeline-table th,
+.timeline-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+}
+.timeline-table th:first-child,
+.timeline-table td:first-child {
+  position: sticky;
+  left: 0;
+  background: #0e1d2b;
+  text-align: left;
+}
+.timeline-table thead {
+  color: var(--muted);
+}
+.timeline-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.plan-note {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 0.73rem;
+  line-height: 1.5;
+}
+.checkpoint-card ol {
+  display: grid;
+  gap: 12px;
+  padding-left: 22px;
+  margin: 20px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+.breakdown-card dl {
+  display: grid;
+  gap: 0;
+  margin: 17px 0 0;
+}
+.breakdown-card dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.breakdown-card dt {
+  color: var(--muted);
+  font-size: 0.77rem;
+}
+.breakdown-card dd {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+.breakdown-card .total {
+  border-bottom: 0;
+  color: var(--green);
+}
+.assumptions-card {
+  scroll-margin-top: 20px;
+}
+.plan-form {
+  display: grid;
+  gap: 22px;
+}
+.plan-form fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+}
+.plan-form legend {
+  padding: 0 8px;
+  font-weight: 800;
+}
+.plan-form .three {
+  grid-template-columns: repeat(3, 1fr);
+}
+.plan-form label {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+.plan-form label small {
+  font-weight: 400;
+  line-height: 1.35;
+}
+.plan-save {
+  justify-self: end;
+  padding: 13px 20px;
+}
 @media (max-width: 950px) {
   .stats {
     grid-template-columns: 1fr 1fr;
@@ -817,6 +1057,13 @@ button,
     grid-template-columns: 1fr;
   }
   .debt-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+  .plan-grid {
+    grid-template-columns: 1fr;
+  }
+  .plan-stats,
+  .plan-form .three {
     grid-template-columns: 1fr 1fr;
   }
 }
@@ -848,8 +1095,8 @@ button,
       calc(8px + env(safe-area-inset-bottom));
   }
   .bottom-nav a {
-    font-size: 0.74rem;
-    padding: 8px;
+    font-size: 0.65rem;
+    padding: 8px 5px;
   }
   .page-head {
     align-items: flex-start;
@@ -871,6 +1118,32 @@ button,
   .welcome-card {
     align-items: stretch;
     flex-direction: column;
+  }
+  .home-progress-card,
+  .plan-hero {
+    grid-template-columns: 1fr;
+  }
+  .home-progress-card .button {
+    text-align: center;
+  }
+  .goal-ring {
+    width: 94px;
+    height: 94px;
+  }
+  .plan-verdict {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+  .plan-verdict small {
+    grid-column: 1 / -1;
+  }
+  .plan-stats,
+  .plan-form .three {
+    grid-template-columns: 1fr;
+  }
+  .plan-save {
+    width: 100%;
   }
   .month-picker {
     width: 100%;
@@ -951,7 +1224,7 @@ button,
   }
 }
 
-.quick-actions{grid-template-columns:repeat(4,1fr)}
+.quick-actions{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
 .quick-action.recurring{border-color:#31566d;background:linear-gradient(145deg,#102a3b,#0b1926)}
 .cashflow-card{margin-bottom:16px;border-color:#28536b}
 .forecast-summary{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 14px}

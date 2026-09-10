@@ -7,7 +7,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}?pwa=3">
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}?pwa=4">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon-192.png') }}">
   <title>{% block title %}Expense Manager{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
@@ -20,6 +20,7 @@
         <a class="{{ 'active' if request.endpoint == 'dashboard' }}" href="{{ url_for('dashboard') }}">Overview</a>
         <a class="{{ 'active' if request.endpoint in ('transactions','delete_transaction') }}" href="{{ url_for('transactions') }}">Transactions</a>
         <a class="{{ 'active' if request.endpoint in ('budgets','delete_budget') }}" href="{{ url_for('budgets') }}">Budgets</a>
+        <a class="{{ 'active' if request.endpoint == 'financial_plan' }}" href="{{ url_for('financial_plan') }}">Home plan</a>
         <a class="{{ 'active' if request.endpoint in ('recurring','post_recurring','skip_recurring','delete_recurring') }}" href="{{ url_for('recurring') }}">Recurring</a>
         <a class="{{ 'active' if request.endpoint in ('debts','pay_debt','delete_debt_payment','archive_debt','edit_debt','set_debt_strategy') }}" href="{{ url_for('debts') }}">Debts</a>
         <a href="{{ url_for('export_csv') }}">Export data</a>
@@ -38,6 +39,7 @@
     <a class="{{ 'active' if request.endpoint == 'dashboard' }}" href="{{ url_for('dashboard') }}">Overview</a>
     <a class="{{ 'active' if request.endpoint == 'transactions' }}" href="{{ url_for('transactions') }}">Transactions</a>
     <a class="{{ 'active' if request.endpoint == 'budgets' }}" href="{{ url_for('budgets') }}">Budgets</a>
+    <a class="{{ 'active' if request.endpoint == 'financial_plan' }}" href="{{ url_for('financial_plan') }}">Home plan</a>
     <a class="{{ 'active' if request.endpoint == 'recurring' }}" href="{{ url_for('recurring') }}">Recurring</a>
     <a class="{{ 'active' if request.endpoint == 'debts' }}" href="{{ url_for('debts') }}">Debts</a>
   </nav>
