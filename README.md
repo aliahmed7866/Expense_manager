@@ -48,6 +48,17 @@ bash termux/install-auto-deploy.sh
 
 The installer creates the `expense-manager` runit service and registers it in `~/.config/aycf/apps.json`. The admin hub reads that registry dynamically, so it does not need to be restarted. The default database is `~/.local/share/expense-manager/expenses.sqlite3`.
 
+Automatic updates check the public repository without using saved GitHub credentials. To force one safe update attempt and inspect the result:
+
+```bash
+cd ~/Expense_manager
+bash termux/auto-deploy.sh --once
+cat ~/.local/state/expense-manager/deploy-status.txt
+tail -50 ~/.local/state/expense-manager/deploy.log
+```
+
+The updater only fast-forwards a clean checkout. It reports `blocked` instead of overwriting tracked local changes or a diverged branch.
+
 If the service is not installed yet, the admin hub can run its configured setup command from the Pocketwise **Start** button. After setup, Start, Stop and Restart use the `expense-manager` runit service directly.
 
 ## Tests
