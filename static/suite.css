@@ -1,0 +1,33 @@
+/* Shared interaction refinements; each app keeps its own palette and layout. */
+html { -webkit-text-size-adjust: 100%; scroll-padding-block: 90px; }
+body { -webkit-font-smoothing: antialiased; }
+:where(button, a, input, select, textarea, summary):focus-visible {
+  outline: 3px solid var(--focus-ring, #9bded6); outline-offset: 3px;
+}
+:where(input, select, textarea) { scroll-margin-block: 100px; }
+:where(button, .button, .primary, .secondary) { touch-action: manipulation; }
+:where(button, input, select, textarea):disabled { cursor: not-allowed; }
+:where(h1, h2, h3) { text-wrap: balance; }
+:where(p, dd) { overflow-wrap: anywhere; }
+:where(table, .metric-value, .metrics strong) { font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) {
+  input:not([type=checkbox]):not([type=radio]), select, textarea { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+:root { --muted: #afbed0; --line: #34465a; --focus-ring: #73e8b8; }
+.card, .stat-card { box-shadow: 0 10px 28px #0002; }
+.sidebar nav a.active, .bottom-nav a.active { box-shadow: inset 0 -3px #45d39c; }
+th, td { padding-block: 14px; }
+input, select, button, .button { min-height: 44px; }
+input[type=checkbox], input[type=radio] { min-height: auto; }
+.recurring-copy, .recurring-row > *, .upcoming-entry > * { min-width: 0; }
+.recurring-copy { overflow-wrap: anywhere; }
+@media(max-width:700px) {
+ .bottom-nav { overflow-x: auto; justify-content: flex-start; gap: 4px; }
+ .bottom-nav a { flex: 1 0 78px; min-height: 48px; font-size: .75rem; display: grid; place-items: center; }
+ .recurring-row { grid-template-columns: auto minmax(0,1fr); }
+ .recurring-row > strong { grid-column: 2; }
+}
